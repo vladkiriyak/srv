@@ -8,8 +8,8 @@ from utils import is_in
 
 class Server:
     http_response = b"HTTP/1.1 200 OK\nConnection: close"
-    CONN_TIMEOUT = 0
-    SOCK_TIMEOUT = 0
+    CONN_TIMEOUT = 0.001
+    SOCK_TIMEOUT = 0.001
 
     def __init__(
             self,
@@ -27,15 +27,13 @@ class Server:
         self.server_sock.bind((host, port))
         self.server_sock.listen()
 
-        self.sockets = [self.server_sock]
-        self.connections = []
         self.connection_generators = []
 
         self.upload_conf()
 
     def event_loop(self):
         while True:
-            ready_to_read, _, _ = select(self.sockets, [], [], self.SOCK_TIMEOUT)
+            ready_to_read, _, _ = select([self.server_sock], [], [], self.SOCK_TIMEOUT)
 
             if ready_to_read:
                 self.create_connection()
@@ -55,32 +53,26 @@ class Server:
         }
 
     def create_conn_generator(self):
-        # was_connection = False
         conn, addr = self.server_sock.accept()
-        self.connections.append(conn)
         request_param: dict = {}
 
-        ready_to_read, ready_to_write, _ = select(self.connections, [], [], self.CONN_TIMEOUT)
-        print(ready_to_read)
+        ready_to_read, ready_to_write, _ = select([conn], [], [], self.CONN_TIMEOUT)
         while is_in(conn, ready_to_read):
-            # was_connection = True
             request_chunk = conn.recv(4096)
+
             if not request_param:
                 request_param = self.parse_http_request(request_chunk)
-            if not request_chunk:
-                break
 
             yield request_chunk
-            ready_to_read, _, _ = select(self.connections, [], [], self.CONN_TIMEOUT)
+            ready_to_read, _, _ = select([conn], [], [], self.CONN_TIMEOUT)
 
-        # if request_param["url"] == '/':
-        #     conn.send(self.http_response + b'\n\n' + b'hello')
-        # else:
-        #     file_content = self.get_file_content(request_param["url"])
-        #     conn.send(self.http_response + b'\n\n' + file_content)
+        if request_param:
+            if request_param["url"] == '/':
+                conn.sendall(self.http_response + b'\n\n' + b'hello')
+            else:
+                file_content = self.get_file_content(request_param["url"])
+                conn.sendall(self.http_response + b'\n\n' + file_content)
 
-        conn.send(self.http_response + b'\n\n' + b'hello')
-        self.connections.remove(conn)
         conn.close()
 
     def create_connection(self):
