@@ -7,7 +7,7 @@ from utils import is_in
 
 
 class Server:
-    http_response = b"HTTP/1.1 200 OK\nConnection: close"
+    http_response = b"HTTP/1.1 200 OK"
     CONN_TIMEOUT = 0.001
     SOCK_TIMEOUT = 0.001
 
@@ -28,7 +28,6 @@ class Server:
         self.server_sock.listen()
 
         self.connection_generators = []
-
         self.upload_conf()
 
     def event_loop(self):
@@ -46,26 +45,39 @@ class Server:
 
     @staticmethod
     def parse_http_request(request: bytes) -> dict:
-        request = request.decode().split(' ')
+        request = request.decode()
+        http_lines = request.split("\n")
+        method, url, protocol = http_lines[0].split(' ')
+        headers = {}
+        for i in range(1, len(http_lines)):
+            key = http_lines[i].split(": ")[0]
+            value = http_lines[i].split(" ")[1]
+            headers[key] = value
+
         return {
-            'method': request[0],
-            'url': request[1]
+            'method': method,
+            'url': url,
+            'protocol': protocol,
+            'headers': headers
         }
 
     def create_conn_generator(self):
         conn, addr = self.server_sock.accept()
-        request_param: dict = {}
+        request_param = {}
 
         ready_to_read, ready_to_write, _ = select([conn], [], [], self.CONN_TIMEOUT)
-        while is_in(conn, ready_to_read):
+        r = b''
+
+        while ready_to_read:
             request_chunk = conn.recv(4096)
+            r += request_chunk
 
             if not request_param:
                 request_param = self.parse_http_request(request_chunk)
-
             yield request_chunk
             ready_to_read, _, _ = select([conn], [], [], self.CONN_TIMEOUT)
 
+        print(r.decode())
         if request_param:
             if request_param["url"] == '/':
                 conn.sendall(self.http_response + b'\n\n' + b'hello')
@@ -83,12 +95,8 @@ class Server:
             self.config = json.load(conf)
 
     def get_file_content(self, file_path: str) -> bytes:
-
         file_content: bytes
-        try:
-            with open(self.config['server']['static'] + file_path, mode='rb') as file:
-                file_content = file.read()
-        except:
-            raise
+        with open(self.config['server']['static'] + file_path, mode='rb') as file:
+            file_content = file.read()
 
         return file_content
