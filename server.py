@@ -4,8 +4,6 @@ from select import select
 from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR
 from typing import Optional
 
-from utils import is_in
-
 
 class Request:
 
@@ -43,8 +41,12 @@ class Request:
 
 class Server:
     http_response = b"HTTP/1.1 200 OK"
-    CONN_TIMEOUT = 0.001
-    SOCK_TIMEOUT = 0.001
+    # CONN_TIMEOUT = 0.0001
+    # SOCK_TIMEOUT = 0.0001
+
+    CONN_TIMEOUT = 0
+    SOCK_TIMEOUT = 0
+    ASYNC_TIMEOUT = 100000
 
     def __init__(
             self,
@@ -74,7 +76,7 @@ class Server:
 
             for conn_gen in self.connection_generators:
                 try:
-                    conn_gen.__next__().decode()
+                    conn_gen.__next__()
                 except StopIteration:
                     self.connection_generators.remove(conn_gen)
 
@@ -83,11 +85,21 @@ class Server:
         request: Optional[Request] = None
 
         ready_to_read, ready_to_write, _ = select([conn], [], [], self.CONN_TIMEOUT)
-        r = b''
+        timeout = self.ASYNC_TIMEOUT
+
+        while not ready_to_read and timeout != 0:
+            ready_to_read, ready_to_write, _ = select([conn], [], [], self.CONN_TIMEOUT)
+            timeout -= 1
+            yield
+
+        raw_request = b''
 
         while ready_to_read:
             request_chunk = conn.recv(4096)
-            r += request_chunk
+            raw_request += request_chunk
+
+            if not request_chunk:
+                break
 
             if not request:
                 request = Request(request_chunk)
@@ -95,7 +107,7 @@ class Server:
             yield request_chunk
             ready_to_read, _, _ = select([conn], [], [], self.CONN_TIMEOUT)
 
-        print(r.decode())
+        print(raw_request.decode())
         if request:
             if request.url == '/':
                 conn.sendall(self.http_response + b'\n\n' + b'hello')
