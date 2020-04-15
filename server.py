@@ -19,10 +19,26 @@ class Request:
             value = http_lines[i].split(" ")[1]
             headers[key] = value
 
-        self.method = method
-        self.url = url
-        self.protocol = protocol
-        self.headers = headers
+        self.__method = method
+        self.__url = url
+        self.__protocol = protocol
+        self.__headers = headers
+
+    @property
+    def method(self):
+        return self.__method
+
+    @property
+    def url(self):
+        return self.__url
+
+    @property
+    def protocol(self):
+        return self.__protocol
+
+    @property
+    def headers(self):
+        return self.__headers
 
 
 class Server:
