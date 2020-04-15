@@ -45,7 +45,8 @@ class Server:
 
     @staticmethod
     def parse_http_request(request: bytes) -> dict:
-        request = request.decode()
+        request = request.decode().split('\r\n\r\n')[0]
+
         http_lines = request.split("\n")
         method, url, protocol = http_lines[0].split(' ')
         headers = {}
