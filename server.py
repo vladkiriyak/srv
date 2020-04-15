@@ -2,8 +2,27 @@ import json
 import time
 from select import select
 from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR
+from typing import Optional
 
 from utils import is_in
+
+
+class Request:
+
+    def __init__(self, request: bytes):
+        request = request.decode().split('\r\n\r\n')[0]
+        http_lines = request.split("\n")
+        method, url, protocol = http_lines[0].split(' ')
+        headers = {}
+        for i in range(1, len(http_lines)):
+            key = http_lines[i].split(": ")[0]
+            value = http_lines[i].split(" ")[1]
+            headers[key] = value
+
+        self.method = method
+        self.url = url
+        self.protocol = protocol
+        self.headers = headers
 
 
 class Server:
@@ -43,28 +62,29 @@ class Server:
                 except StopIteration:
                     self.connection_generators.remove(conn_gen)
 
-    @staticmethod
-    def parse_http_request(request: bytes) -> dict:
-        request = request.decode().split('\r\n\r\n')[0]
-
-        http_lines = request.split("\n")
-        method, url, protocol = http_lines[0].split(' ')
-        headers = {}
-        for i in range(1, len(http_lines)):
-            key = http_lines[i].split(": ")[0]
-            value = http_lines[i].split(" ")[1]
-            headers[key] = value
-
-        return {
-            'method': method,
-            'url': url,
-            'protocol': protocol,
-            'headers': headers
-        }
+    # @staticmethod
+    # def parse_http_request(request: bytes) -> dict:
+    #     request = request.decode().split('\r\n\r\n')[0]
+    #
+    #     http_lines = request.split("\n")
+    #     method, url, protocol = http_lines[0].split(' ')
+    #     headers = {}
+    #     for i in range(1, len(http_lines)):
+    #         key = http_lines[i].split(": ")[0]
+    #         value = http_lines[i].split(" ")[1]
+    #         headers[key] = value
+    #
+    #     return {
+    #         'method': method,
+    #         'url': url,
+    #         'protocol': protocol,
+    #         'headers': headers
+    #     }
 
     def create_conn_generator(self):
         conn, addr = self.server_sock.accept()
-        request_param = {}
+        # request_param = {}
+        request: Optional[Request] = None
 
         ready_to_read, ready_to_write, _ = select([conn], [], [], self.CONN_TIMEOUT)
         r = b''
@@ -73,17 +93,20 @@ class Server:
             request_chunk = conn.recv(4096)
             r += request_chunk
 
-            if not request_param:
-                request_param = self.parse_http_request(request_chunk)
+            # if not request_param:
+            #     request_param = self.parse_http_request(request_chunk)
+            if not request:
+                request = Request(request_chunk)
+
             yield request_chunk
             ready_to_read, _, _ = select([conn], [], [], self.CONN_TIMEOUT)
 
         print(r.decode())
-        if request_param:
-            if request_param["url"] == '/':
+        if request:
+            if request.url == '/':
                 conn.sendall(self.http_response + b'\n\n' + b'hello')
             else:
-                file_content = self.get_file_content(request_param["url"])
+                file_content = self.get_file_content(request.url)
                 conn.sendall(self.http_response + b'\n\n' + file_content)
 
         conn.close()
