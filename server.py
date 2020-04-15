@@ -8,7 +8,7 @@ from utils import is_in
 
 class Server:
     http_response = b"HTTP/1.1 200 OK\nConnection: close"
-    CONN_TIMEOUT = 0.001
+    CONN_TIMEOUT = 0
     SOCK_TIMEOUT = 0
 
     def __init__(
@@ -17,32 +17,28 @@ class Server:
             port: int,
 
     ):
-        self.config: dict
+        self.config = {}
 
         self.host = host
         self.port = port
 
-        self.sockets = []
+        self.server_sock = socket(AF_INET, SOCK_STREAM)
+        self.server_sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+        self.server_sock.bind((host, port))
+        self.server_sock.listen()
+
+        self.sockets = [self.server_sock]
         self.connections = []
         self.connection_generators = []
 
         self.upload_conf()
-        self.create_socket()
-
-    def create_socket(self):
-        server_sock = socket(AF_INET, SOCK_STREAM)
-        server_sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-        server_sock.bind((self.host, self.port))
-        server_sock.listen()
-
-        self.sockets.append(server_sock)
 
     def event_loop(self):
         while True:
             ready_to_read, _, _ = select(self.sockets, [], [], self.SOCK_TIMEOUT)
 
-            for sock in ready_to_read:
-                self.create_connection(sock)
+            if ready_to_read:
+                self.create_connection()
 
             for conn_gen in self.connection_generators:
                 try:
@@ -58,9 +54,9 @@ class Server:
             'url': request[1]
         }
 
-    def create_conn_generator(self, server_socket):
+    def create_conn_generator(self):
         # was_connection = False
-        conn, addr = server_socket.accept()
+        conn, addr = self.server_sock.accept()
         self.connections.append(conn)
         request_param: dict = {}
 
@@ -77,24 +73,18 @@ class Server:
             yield request_chunk
             ready_to_read, _, _ = select(self.connections, [], [], self.CONN_TIMEOUT)
 
-        if request_param["url"] == '/':
-            conn.sendall(self.http_response + b'\n\n' + b'hello')
-        else:
-            file_content = self.get_file_content(request_param["url"])
-            conn.sendall(self.http_response + b'\n\n' + file_content)
+        # if request_param["url"] == '/':
+        #     conn.send(self.http_response + b'\n\n' + b'hello')
+        # else:
+        #     file_content = self.get_file_content(request_param["url"])
+        #     conn.send(self.http_response + b'\n\n' + file_content)
 
-        # conn.send(self.http_response + b'\n\n' + b'hello')
-
+        conn.send(self.http_response + b'\n\n' + b'hello')
         self.connections.remove(conn)
         conn.close()
 
-        self.sockets.remove(server_socket)
-        server_socket.close()
-
-        self.create_socket()
-
-    def create_connection(self, socket):
-        self.connection_generators.append(self.create_conn_generator(socket))
+    def create_connection(self):
+        self.connection_generators.append(self.create_conn_generator())
 
     def upload_conf(self):
         with open('server_conf.json') as conf:
