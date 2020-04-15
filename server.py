@@ -62,28 +62,8 @@ class Server:
                 except StopIteration:
                     self.connection_generators.remove(conn_gen)
 
-    # @staticmethod
-    # def parse_http_request(request: bytes) -> dict:
-    #     request = request.decode().split('\r\n\r\n')[0]
-    #
-    #     http_lines = request.split("\n")
-    #     method, url, protocol = http_lines[0].split(' ')
-    #     headers = {}
-    #     for i in range(1, len(http_lines)):
-    #         key = http_lines[i].split(": ")[0]
-    #         value = http_lines[i].split(" ")[1]
-    #         headers[key] = value
-    #
-    #     return {
-    #         'method': method,
-    #         'url': url,
-    #         'protocol': protocol,
-    #         'headers': headers
-    #     }
-
     def create_conn_generator(self):
         conn, addr = self.server_sock.accept()
-        # request_param = {}
         request: Optional[Request] = None
 
         ready_to_read, ready_to_write, _ = select([conn], [], [], self.CONN_TIMEOUT)
@@ -93,8 +73,6 @@ class Server:
             request_chunk = conn.recv(4096)
             r += request_chunk
 
-            # if not request_param:
-            #     request_param = self.parse_http_request(request_chunk)
             if not request:
                 request = Request(request_chunk)
 
@@ -120,7 +98,11 @@ class Server:
 
     def get_file_content(self, file_path: str) -> bytes:
         file_content: bytes
-        with open(self.config['server']['static'] + file_path, mode='rb') as file:
-            file_content = file.read()
+        try:
+            with open(self.config['server']['static'] + file_path, mode='rb') as file:
+                file_content = file.read()
+        except (IsADirectoryError, FileNotFoundError):
+            with open(self.config['server']['static'] + '/page_not_found.html', mode='rb') as file:
+                file_content = file.read()
 
         return file_content
