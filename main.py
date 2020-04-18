@@ -6,7 +6,7 @@ def main():
     try:
         server.event_loop()
     except KeyboardInterrupt:
-        server.sockets[0].close()
+        server.server_sock.close()
 
 
 if __name__ == '__main__':
