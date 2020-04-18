@@ -1,5 +1,12 @@
 {
   "server": {
     "static": "/home/vlad/PycharmProjects/TPE/srv/static"
+  },
+  "load_balancer": {
+    "urls": [
+      ["localhost", 8001],
+      ["localhost", 8002],
+      ["localhost", 8003]
+    ]
   }
 }

@@ -2,7 +2,7 @@ import json
 import time
 from select import select
 from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR
-from typing import Optional
+from typing import Optional, Generator
 
 
 class Request:
@@ -40,9 +40,8 @@ class Request:
 
 
 class Server:
+    http_request = b'GET / HTTP/1.1'
     http_response = b"HTTP/1.1 200 OK"
-    # CONN_TIMEOUT = 0.0001
-    # SOCK_TIMEOUT = 0.0001
 
     CONN_TIMEOUT = 0
     SOCK_TIMEOUT = 0
@@ -58,14 +57,20 @@ class Server:
 
         self.host = host
         self.port = port
+        self.upload_conf()
 
         self.server_sock = socket(AF_INET, SOCK_STREAM)
         self.server_sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
         self.server_sock.bind((host, port))
         self.server_sock.listen()
 
+        self.balancing_generator = self.create_balancing_generator()
         self.connection_generators = []
-        self.upload_conf()
+
+    def create_balancing_generator(self):
+        while True:
+            for hosting in self.config['load_balancer']['urls']:
+                yield hosting
 
     def event_loop(self):
         while True:
@@ -86,7 +91,6 @@ class Server:
 
         ready_to_read, ready_to_write, _ = select([conn], [], [], self.CONN_TIMEOUT)
         timeout = self.ASYNC_TIMEOUT
-
         while not ready_to_read and timeout != 0:
             ready_to_read, ready_to_write, _ = select([conn], [], [], self.CONN_TIMEOUT)
             timeout -= 1
@@ -107,15 +111,43 @@ class Server:
             yield request_chunk
             ready_to_read, _, _ = select([conn], [], [], self.CONN_TIMEOUT)
 
-        print(raw_request.decode())
         if request:
             if request.url == '/':
                 conn.sendall(self.http_response + b'\n\n' + b'hello')
+            elif request.url == '/loadMethod':
+
+                sock = socket(AF_INET, SOCK_STREAM)
+                sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+
+                sock.connect(tuple(self.balancing_generator.__next__()))
+                sock.sendall(self.http_request + b'\n\n')
+
+                raw_response = self.recv_all(sock, 0.01)
+
+                conn.sendall(raw_response)
+
+
             else:
                 file_content = self.get_file_content(request.url)
                 conn.sendall(self.http_response + b'\n\n' + file_content)
 
         conn.close()
+
+    @staticmethod
+    def recv_all(sock: socket, timeput: float) -> bytes:
+        raw_response = b''
+        ready_to_read, _, _ = select([sock], [], [], timeput)
+        while ready_to_read:
+            request_chunk = sock.recv(4096)
+            raw_response += request_chunk
+
+            if not request_chunk:
+                break
+
+            ready_to_read, _, _ = select([sock], [], [], timeput)
+
+        sock.close()
+        return raw_response
 
     def create_connection(self):
         self.connection_generators.append(self.create_conn_generator())
