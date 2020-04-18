@@ -1,6 +1,6 @@
 {
   "server": {
-    "static": "/home/vlad/PycharmProjects/TPE/srv/static"
+    "static": "/home/vlad/PycharmProjects/srv/static"
   },
   "load_balancer": {
     "urls": [
