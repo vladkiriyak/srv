@@ -2,7 +2,7 @@ from server import Server
 
 
 def main():
-    server = Server('localhost', 8000)
+    server = Server('localhost', 8080)
     try:
         server.event_loop()
     except KeyboardInterrupt:
