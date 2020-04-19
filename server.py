@@ -45,7 +45,7 @@ class Server:
 
     CONN_TIMEOUT = 0
     SOCK_TIMEOUT = 0
-    ASYNC_TIMEOUT = 100
+    ASYNC_TIMEOUT = 100000
 
     def __init__(
             self,
@@ -93,7 +93,7 @@ class Server:
         conn, addr = self.server_sock.accept()
         request: Optional[Request] = None
 
-        raw_data = yield from self.async_recv(conn, self.ASYNC_TIMEOUT, self.CONN_TIMEOUT)
+        raw_data = yield from self.async_recv(conn, self.ASYNC_TIMEOUT, self.CONN_TIMEOUT, False)
         if not raw_data:
             return
         request = Request(raw_data)
@@ -107,7 +107,7 @@ class Server:
 
             sock.connect(tuple(self.balancing_generator.__next__()))
             sock.sendall(self.http_request + b'\n\n')
-            raw_response = yield from self.async_recv(sock, self.ASYNC_TIMEOUT, self.CONN_TIMEOUT)
+            raw_response = yield from self.async_recv(sock, self.ASYNC_TIMEOUT, self.CONN_TIMEOUT, False)
             if not raw_response:
                 return
 
@@ -120,7 +120,7 @@ class Server:
         conn.close()
 
     @staticmethod
-    def async_recv(conn, async_timeout, conn_timeout):
+    def async_recv(conn, async_timeout, conn_timeout, is_steam: bool):
 
         raw_data = b''
         _async_timeout = async_timeout
@@ -128,6 +128,7 @@ class Server:
         while True:
 
             if _async_timeout == 0:
+                print(time.time())
                 break
 
             if not ready_to_read:
@@ -138,10 +139,13 @@ class Server:
 
             _async_timeout = async_timeout
             request_chunk = conn.recv(4096)
+
             if not request_chunk:
                 break
 
             raw_data += request_chunk
+            if not is_steam:
+                break
             yield
             ready_to_read, _, _ = select([conn], [], [], conn_timeout)
 
