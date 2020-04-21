@@ -7,9 +7,10 @@ from typing import Optional, Generator
 
 class Request:
 
-    def __init__(self, request: bytes):
-        request = request.decode().split('\r\n\r\n')[0]
-        http_lines = request.split("\n")
+    def __init__(self, raw_request: bytes):
+        raw_http_title, body = raw_request.decode().split('\r\n\r\n')
+
+        http_lines = raw_http_title.split("\n")
         method, url, protocol = http_lines[0].split(' ')
         headers = {}
         for i in range(1, len(http_lines)):
@@ -21,6 +22,11 @@ class Request:
         self.__url = url
         self.__protocol = protocol
         self.__headers = headers
+        self.__body = body
+
+    @property
+    def body(self):
+        return self.__body
 
     @property
     def method(self):
@@ -45,7 +51,7 @@ class Server:
 
     CONN_TIMEOUT = 0
     SOCK_TIMEOUT = 0
-    ASYNC_TIMEOUT = 100000
+    ASYNC_TIMEOUT = 1000
 
     def __init__(
             self,
@@ -85,7 +91,6 @@ class Server:
                 try:
                     self.connection_generators[conn_gen].__next__()
                 except StopIteration:
-
                     self.connection_generators.remove(self.connection_generators[conn_gen])
                 conn_gen += 1
 
@@ -107,7 +112,7 @@ class Server:
 
             sock.connect(tuple(self.balancing_generator.__next__()))
             sock.sendall(self.http_request + b'\n\n')
-            raw_response = yield from self.async_recv(sock, self.ASYNC_TIMEOUT, self.CONN_TIMEOUT, False)
+            raw_response = yield from self.async_recv(sock, self.ASYNC_TIMEOUT, self.CONN_TIMEOUT, True)
             if not raw_response:
                 return
 
@@ -128,7 +133,6 @@ class Server:
         while True:
 
             if _async_timeout == 0:
-                print(time.time())
                 break
 
             if not ready_to_read:
