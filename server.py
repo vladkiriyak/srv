@@ -5,12 +5,51 @@ from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR
 from typing import Optional, Generator
 
 
+class Response:
+    def __init__(self, raw_http_head: bytes):
+        http_head = raw_http_head.decode()
+
+        http_lines = http_head.split("\n")
+        protocol, code, status = http_lines[0].split(' ')
+        headers = {}
+        for i in range(1, len(http_lines)):
+            key = http_lines[i].split(": ")[0]
+            value = http_lines[i].split(" ")[1]
+            headers[key] = value
+
+        self.__code = code
+        self.__status = status
+        self.__protocol = protocol
+        self.__headers = headers
+        self.__body = None
+
+    @property
+    def body(self):
+        return self.__body
+
+    @property
+    def code(self):
+        return self.__code
+
+    @property
+    def status(self):
+        return self.__status
+
+    @property
+    def protocol(self):
+        return self.__protocol
+
+    @property
+    def headers(self):
+        return self.__headers
+
+
 class Request:
 
-    def __init__(self, raw_request: bytes):
-        raw_http_title, body = raw_request.decode().split('\r\n\r\n')
+    def __init__(self, raw_http_head: bytes):
+        http_head = raw_http_head.decode()
 
-        http_lines = raw_http_title.split("\n")
+        http_lines = http_head.split("\n")
         method, url, protocol = http_lines[0].split(' ')
         headers = {}
         for i in range(1, len(http_lines)):
@@ -22,7 +61,7 @@ class Request:
         self.__url = url
         self.__protocol = protocol
         self.__headers = headers
-        self.__body = body
+        self.__body = None
 
     @property
     def body(self):
@@ -94,14 +133,49 @@ class Server:
                     self.connection_generators.remove(self.connection_generators[conn_gen])
                 conn_gen += 1
 
-    def create_async_connection(self):
-        conn, addr = self.server_sock.accept()
+    @staticmethod
+    def __recv_http_head(conn: socket, async_timeout: int, conn_timeout: float) -> (bytes, bytes):
+        raw_http_head = b''
+        raw_body_start = b''
+        _async_timeout = async_timeout
+        ready_to_read, ready_to_write, _ = select([conn], [], [], conn_timeout)
+        while True:
+
+            if _async_timeout == 0:
+                break
+
+            if not ready_to_read:
+                _async_timeout -= 1
+                yield
+                ready_to_read, ready_to_write, _ = select([conn], [], [], conn_timeout)
+                continue
+
+            _async_timeout = async_timeout
+            request_chunk = conn.recv(4096)
+
+            raw_http_head += request_chunk
+            if b'\r\n\r\n' in raw_http_head:
+                raw_http_head, raw_body_start = raw_http_head.split(b'\r\n\r\n')
+
+            yield
+            ready_to_read, _, _ = select([conn], [], [], conn_timeout)
+
+        return raw_http_head, raw_body_start
+
+    def recv_http_request(self, conn: socket) -> Request:
         request: Optional[Request] = None
 
-        raw_data = yield from self.async_recv(conn, self.ASYNC_TIMEOUT, self.CONN_TIMEOUT, False)
-        if not raw_data:
-            return
+        raw_data, raw_body_start = yield from self.__recv_http_head(conn, self.ASYNC_TIMEOUT, self.CONN_TIMEOUT)
         request = Request(raw_data)
+        if request.headers.get('Content-Length'):
+            raw_body = yield from self.async_recv(conn, self.ASYNC_TIMEOUT, self.CONN_TIMEOUT)
+            request.body += raw_body.decode()
+        return request
+
+    def create_async_connection(self):
+        conn, addr = self.server_sock.accept()
+
+        request: Optional[Request] = yield from self.recv_http_request(conn)
 
         if request.url == '/':
             conn.sendall(self.http_response + b'\n\n' + b'hello')
@@ -112,7 +186,8 @@ class Server:
 
             sock.connect(tuple(self.balancing_generator.__next__()))
             sock.sendall(self.http_request + b'\n\n')
-            raw_response = yield from self.async_recv(sock, self.ASYNC_TIMEOUT, self.CONN_TIMEOUT, True)
+            response: Optional[Response] = yield from self.recv_http_request(sock)
+
             if not raw_response:
                 return
 
@@ -125,7 +200,7 @@ class Server:
         conn.close()
 
     @staticmethod
-    def async_recv(conn, async_timeout, conn_timeout, is_steam: bool):
+    def async_recv(conn, async_timeout, conn_timeout):
 
         raw_data = b''
         _async_timeout = async_timeout
@@ -148,8 +223,7 @@ class Server:
                 break
 
             raw_data += request_chunk
-            if not is_steam:
-                break
+
             yield
             ready_to_read, _, _ = select([conn], [], [], conn_timeout)
 
