@@ -5,11 +5,7 @@
   "load_balancer": {
     "urls": [
       ["localhost", 8001],
-      ["localhost", 8002],
-      ["localhost", 8003],
-      ["localhost", 8004],
-      ["localhost", 8005],
-      ["localhost", 8006]
+      ["localhost", 8002]
     ]
   }
 }

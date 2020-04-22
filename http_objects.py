@@ -1,5 +1,5 @@
-from http import HTTP_CODE
-from interfaces import HTTPObject
+from .http import HTTP_CODE
+from .interfaces import HTTPObject
 
 
 class Response(HTTPObject):
@@ -20,7 +20,7 @@ class Response(HTTPObject):
         self.__status = status
         self.__protocol = protocol
         self.__headers: dict = headers
-        self.body = None
+        self.body = ''
 
     @property
     def raw(self):
@@ -61,7 +61,7 @@ class Request(HTTPObject):
         self.__url = url
         self.__protocol = protocol
         self.__headers = headers
-        self.body = None
+        self.body = ''
 
     @property
     def raw(self):
