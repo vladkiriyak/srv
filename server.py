@@ -98,10 +98,9 @@ class Server:
             return
 
         request = Request(raw_data)
-        if request.headers.get('Content-Length'):
-            length = int(request.headers.get('Content-Length'))
-            request.headers.get('Content-Length')
-
+        content_length = request.headers.get('Content-Length')
+        if content_length and int(content_length) - len(raw_body_start) > 0:
+            length = int(content_length) - len(raw_body_start)
             raw_body = yield from self.async_recv(
                 conn, length,
                 self.ASYNC_TIMEOUT, self.CONN_TIMEOUT
@@ -115,10 +114,10 @@ class Server:
         if not raw_data:
             return
         response = Response(raw_data)
+        content_length = response.headers.get('Content-Length')
 
-        if response.headers.get('Content-Length'):
-            length = int(response.headers.get('Content-Length'))
-
+        if content_length and int(content_length) - len(raw_body_start) > 0:
+            length = int(content_length) - len(raw_body_start)
             raw_body = yield from self.async_recv(
                 conn, length,
                 self.ASYNC_TIMEOUT,
@@ -141,7 +140,6 @@ class Server:
         if request.url == '/':
 
             conn.sendall(self.http_response + b'\n\n' + b'hello')
-
 
         elif request.url == '/loadMethod':
 
@@ -169,14 +167,12 @@ class Server:
         chunk_size = 4096
         _async_timeout = async_timeout
         ready_to_read, ready_to_write, _ = select([conn], [], [], conn_timeout)
-
         for i in range(length // chunk_size + 1):
-
             while True:
+                print(_async_timeout)
                 if _async_timeout == 0:
                     return
                 if not ready_to_read:
-
                     _async_timeout -= 1
                     yield
                     ready_to_read, ready_to_write, _ = select([conn], [], [], conn_timeout)
