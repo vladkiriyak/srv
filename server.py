@@ -15,7 +15,7 @@ class Server:
 
     CONN_TIMEOUT = 0
     SOCK_TIMEOUT = 0
-    ASYNC_TIMEOUT = 1000
+    ASYNC_TIMEOUT = 10000
 
     def __init__(
             self,
@@ -66,16 +66,8 @@ class Server:
 
         while True:
 
-            if _async_timeout == 0:
-                break
-
-            if not ready_to_read:
-                _async_timeout -= 1
-                yield
-                ready_to_read, ready_to_write, _ = select([conn], [], [], conn_timeout)
-                continue
-
-            _async_timeout = async_timeout
+            if not (yield from Server.wait_for_read(conn, async_timeout, conn_timeout)):
+                return
             request_chunk = conn.recv(4096)
 
             if not request_chunk:
@@ -162,25 +154,29 @@ class Server:
         conn.close()
 
     @staticmethod
+    def wait_for_read(conn, async_timeout, conn_timeout) -> bool:
+        ready_to_read, ready_to_write, _ = select([conn], [], [], conn_timeout)
+
+        while True:
+            if async_timeout == 0:
+                return
+            if not ready_to_read:
+                async_timeout -= 1
+                yield
+                ready_to_read, ready_to_write, _ = select([conn], [], [], conn_timeout)
+                continue
+
+            return True
+
+    @staticmethod
     def async_recv(conn: socket, length: int, async_timeout: int, conn_timeout: float):
         raw_data = b''
         chunk_size = 4096
-        _async_timeout = async_timeout
-        ready_to_read, ready_to_write, _ = select([conn], [], [], conn_timeout)
         for i in range(length // chunk_size + 1):
-            while True:
-                print(_async_timeout)
-                if _async_timeout == 0:
-                    return
-                if not ready_to_read:
-                    _async_timeout -= 1
-                    yield
-                    ready_to_read, ready_to_write, _ = select([conn], [], [], conn_timeout)
-                    continue
 
-                break
+            if not (yield from Server.wait_for_read(conn, async_timeout, conn_timeout)):
+                return
 
-            _async_timeout = async_timeout
             request_chunk = conn.recv(chunk_size)
             if not request_chunk:
                 break
