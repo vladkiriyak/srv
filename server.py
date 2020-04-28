@@ -135,17 +135,23 @@ class Server:
 
         elif request.url == '/loadMethod':
 
-            sock = socket(AF_INET, SOCK_STREAM)
-            sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-            sock.connect(tuple(self.balancing_generator.__next__()))
-            sock.sendall(self.http_request + b'\r\n\r\n')
-            response: Optional[Response] = yield from self.recv_http_response(sock)
-            if not response:
-                conn.close()
-                sock.close()
-                return
-            conn.sendall(response.raw)
-            sock.close()
+            while True:
+                try:
+                    sock = socket(AF_INET, SOCK_STREAM)
+                    sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+                    sock.connect(tuple(self.balancing_generator.__next__()))
+                    sock.sendall(self.http_request + b'\r\n\r\n')
+                    response: Optional[Response] = yield from self.recv_http_response(sock)
+                    if not response:
+                        conn.close()
+                        sock.close()
+                        return
+                    conn.sendall(response.raw)
+                    sock.close()
+                    break
+
+                except (ConnectionRefusedError, ConnectionResetError):
+                    continue
 
         else:
             file_content = self.get_file_content(request.url)
